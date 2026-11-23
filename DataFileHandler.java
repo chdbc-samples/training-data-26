@@ -18,7 +18,7 @@ public class DataFileHandler {
      */
     public static LocalDateTime[] loadArrayFromFile(String filePath) {
         DateTimeFormatter timeFormatter = DateTimeFormatter.ISO_DATE_TIME;
-        LocalDateTime[] temporaryArray = new LocalDateTime[1000];
+        LocalDateTime[] temporaryArray = new LocalDateTime[100000];
         int currentIndex = 0;
 
         try (BufferedReader fileReader = new BufferedReader(new FileReader(filePath))) {

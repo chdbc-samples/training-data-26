@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter;
 public class BasicDataOperations {
     static final String PATH_TO_DATA_FILE = "list/LocalDateTime.data";
     static final String SORTED_FILE_PREFIX = "list/LocalDateTime.sorted";
+    static final String SELECTION_FILE_PREFIX = "list/LocalDateTime.selection";
 
     public static void main(String[] args) {
         if (args.length != 3 && args.length != 4) {

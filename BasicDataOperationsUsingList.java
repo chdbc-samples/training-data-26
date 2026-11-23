@@ -240,6 +240,7 @@ public class BasicDataOperationsUsingList {
         LocalDateTime[] matches = new LocalDateTime[values.length];
         int count = 0;
         int inspected = 0;
+        boolean boundsFound = false;
         if (!sorted) {
             // Невпорядковані дані: перевіряємо кожне входження.
             for (LocalDateTime value : values) {
@@ -247,37 +248,60 @@ public class BasicDataOperationsUsingList {
                 if (!value.isBefore(lower) && !value.isAfter(upper)) matches[count++] = value;
             }
         } else {
-            // Етап 1. Бінарним пошуком знаходимо перший елемент, не менший за нижню межу.
-            // Масив упорядкований, тому спочатку йдуть елементи, менші за lower, а після них решта.
-            // Шукаємо індекс, де закінчується перша частина, і з кожним кроком
-            // удвічі звужуємо проміжок [low; high), у якому цей індекс може бути.
-            int low = 0;
-            int high = values.length;
-            while (low < high) {
-                // середина проміжку; зсув >>> 1 ділить на 2 без переповнення int
-                int mid = (low + high) >>> 1;
-                inspected++;
-                // values[mid] < lower: шуканий індекс лежить правіше mid, тож відкидаємо ліву половину разом із mid;
-                // інакше values[mid] може бути шуканим, тож лишаємо mid і відкидаємо праву половину
-                if (values[mid].isBefore(lower)) low = mid + 1; else high = mid;
-            }
-            // Тепер low == high: це перший елемент >= lower (або values.length, якщо таких немає).
-            // Знадобилось близько log2(n) порівнянь замість перегляду всіх менших елементів.
+            // Масив упорядкований, тому значення умови займають суцільний проміжок [from; to).
+            int lowerIndex = Arrays.binarySearch(values, lower);
+            int upperIndex = Arrays.binarySearch(values, upper);
+            if (lowerIndex >= 0 && upperIndex >= 0) {
+                // Обидві межі є в даних. Arrays.binarySearch() для однакових значень повертає
+                // індекс будь-якого з них, тому зсуваємось до першого входження нижньої межі
+                // і за останнє входження верхньої.
+                int from = lowerIndex;
+                while (from > 0 && values[from - 1].compareTo(lower) == 0) from--;
+                int to = upperIndex + 1;
+                while (to < values.length && values[to].compareTo(upper) == 0) to++;
+                // Копіюємо проміжок одним викликом, без перевірки кожного елемента.
+                matches = Arrays.copyOfRange(values, from, to);
+                count = matches.length;
+                boundsFound = true;
+            } else {
+                // Межі немає в даних: знаходимо нижню межу і йдемо до верхньої поелементно.
+                // Етап 1. Бінарним пошуком знаходимо перший елемент, не менший за нижню межу.
+                // Масив упорядкований, тому спочатку йдуть елементи, менші за lower, а після них решта.
+                // Шукаємо індекс, де закінчується перша частина, і з кожним кроком
+                // удвічі звужуємо проміжок [low; high), у якому цей індекс може бути.
+                int low = 0;
+                int high = values.length;
+                while (low < high) {
+                    // середина проміжку; зсув >>> 1 ділить на 2 без переповнення int
+                    int mid = (low + high) >>> 1;
+                    inspected++;
+                    // values[mid] < lower: шуканий індекс лежить правіше mid, тож відкидаємо ліву половину разом із mid;
+                    // інакше values[mid] може бути шуканим, тож лишаємо mid і відкидаємо праву половину
+                    if (values[mid].isBefore(lower)) low = mid + 1; else high = mid;
+                }
+                // Тепер low == high: це перший елемент >= lower (або values.length, якщо таких немає).
+                // Знадобилось близько log2(n) порівнянь замість перегляду всіх менших елементів.
 
-            // Етап 2. Від нижньої межі йдемо вправо до першого елемента, більшого за верхню межу.
-            // Усі елементи до нього вже >= lower, тому окремо перевіряти нижню межу не треба.
-            for (int i = low; i < values.length; i++) {
-                LocalDateTime value = values[i];
-                inspected++;
-                // далі всі елементи ще більші, тож решту масиву можна не переглядати
-                if (value.isAfter(upper)) break;
-                matches[count++] = value;
+                // Етап 2. Від нижньої межі йдемо вправо до першого елемента, більшого за верхню межу.
+                // Усі елементи до нього вже >= lower, тому окремо перевіряти нижню межу не треба.
+                for (int i = low; i < values.length; i++) {
+                    LocalDateTime value = values[i];
+                    inspected++;
+                    // далі всі елементи ще більші, тож решту масиву можна не переглядати
+                    if (value.isAfter(upper)) break;
+                    matches[count++] = value;
+                }
             }
         }
         PerformanceTracker.displayOperationTime(timeStart, operationName);
-        // Друк результатів не входить у виміряний час пошуку.
-        System.out.println("Переглянуто елементів: " + inspected);
-        for (int i = 0; i < count; i++) System.out.println(matches[i]);
+        // Запис результатів у файл не входить у виміряний час пошуку; на екран значення не виводяться.
+        if (boundsFound) {
+            System.out.println("Межі вибірки знайдено методом Arrays.binarySearch()");
+        } else {
+            System.out.println("Переглянуто елементів: " + inspected);
+        }
+        DataFileHandler.writeArrayToFile(Arrays.copyOf(matches, count),
+                BasicDataOperations.SELECTION_FILE_PREFIX + ".array." + (sorted ? "after" : "before") + ".data");
         System.out.println("У масиві знайдено " + count + " входжень (повтори враховано). Умова: " + conditionDescription + ".");
         return count;
     }
@@ -292,8 +316,10 @@ public class BasicDataOperationsUsingList {
         String operationName = "вибірка даних: ArrayList<LocalDateTime>, " + phase + ", умова: " + conditionDescription;
         long timeStart = System.nanoTime();
         LocalDateTime[] matches = new LocalDateTime[values.size()];
+        List<LocalDateTime> range = null;
         int count = 0;
         int inspected = 0;
+        boolean boundsFound = false;
         if (!sorted) {
             // Невпорядковані дані: перевіряємо кожне входження.
             for (LocalDateTime value : values) {
@@ -301,39 +327,65 @@ public class BasicDataOperationsUsingList {
                 if (!value.isBefore(lower) && !value.isAfter(upper)) matches[count++] = value;
             }
         } else {
-            // Етап 1. Бінарним пошуком знаходимо перший елемент, не менший за нижню межу.
-            // Список упорядкований, тому спочатку йдуть елементи, менші за lower, а після них решта.
-            // Шукаємо індекс, де закінчується перша частина, і з кожним кроком
-            // удвічі звужуємо проміжок [low; high), у якому цей індекс може бути.
-            // Доступ get(mid) швидкий (O(1)) лише для ArrayList; для LinkedList він повільний.
-            int low = 0;
-            int high = values.size();
-            while (low < high) {
-                // середина проміжку; зсув >>> 1 ділить на 2 без переповнення int
-                int mid = (low + high) >>> 1;
-                inspected++;
-                // values.get(mid) < lower: шуканий індекс лежить правіше mid, тож відкидаємо ліву половину разом із mid;
-                // інакше values.get(mid) може бути шуканим, тож лишаємо mid і відкидаємо праву половину
-                if (values.get(mid).isBefore(lower)) low = mid + 1; else high = mid;
-            }
-            // Тепер low == high: це перший елемент >= lower (або values.size(), якщо таких немає).
-            // Знадобилось близько log2(n) порівнянь замість перегляду всіх менших елементів.
+            // Список упорядкований, тому значення умови займають суцільний проміжок [from; to).
+            int lowerIndex = Collections.binarySearch(values, lower);
+            int upperIndex = Collections.binarySearch(values, upper);
+            if (lowerIndex >= 0 && upperIndex >= 0) {
+                // Обидві межі є в даних. Collections.binarySearch() для однакових значень повертає
+                // індекс будь-якого з них, тому зсуваємось до першого входження нижньої межі
+                // і за останнє входження верхньої.
+                int from = lowerIndex;
+                while (from > 0 && values.get(from - 1).compareTo(lower) == 0) from--;
+                int to = upperIndex + 1;
+                while (to < values.size() && values.get(to).compareTo(upper) == 0) to++;
+                // Копіюємо проміжок одним викликом, без перевірки кожного елемента.
+                range = new ArrayList<>(values.subList(from, to));
+                count = range.size();
+                boundsFound = true;
+            } else {
+                // Межі немає в даних: знаходимо нижню межу і йдемо до верхньої поелементно.
+                // Етап 1. Бінарним пошуком знаходимо перший елемент, не менший за нижню межу.
+                // Список упорядкований, тому спочатку йдуть елементи, менші за lower, а після них решта.
+                // Шукаємо індекс, де закінчується перша частина, і з кожним кроком
+                // удвічі звужуємо проміжок [low; high), у якому цей індекс може бути.
+                // Доступ get(mid) швидкий (O(1)) лише для ArrayList; для LinkedList він повільний.
+                int low = 0;
+                int high = values.size();
+                while (low < high) {
+                    // середина проміжку; зсув >>> 1 ділить на 2 без переповнення int
+                    int mid = (low + high) >>> 1;
+                    inspected++;
+                    // values.get(mid) < lower: шуканий індекс лежить правіше mid, тож відкидаємо ліву половину разом із mid;
+                    // інакше values.get(mid) може бути шуканим, тож лишаємо mid і відкидаємо праву половину
+                    if (values.get(mid).isBefore(lower)) low = mid + 1; else high = mid;
+                }
+                // Тепер low == high: це перший елемент >= lower (або values.size(), якщо таких немає).
+                // Знадобилось близько log2(n) порівнянь замість перегляду всіх менших елементів.
 
-            // Етап 2. Від нижньої межі йдемо вправо до першого елемента, більшого за верхню межу.
-            // Усі елементи до нього вже >= lower, тому окремо перевіряти нижню межу не треба.
-            java.util.ListIterator<LocalDateTime> cursor0 = values.listIterator(low);
-            while (cursor0.hasNext()) {
-                LocalDateTime value = cursor0.next();
-                inspected++;
-                // далі всі елементи ще більші, тож решту списку можна не переглядати
-                if (value.isAfter(upper)) break;
-                matches[count++] = value;
+                // Етап 2. Від нижньої межі йдемо вправо до першого елемента, більшого за верхню межу.
+                // Усі елементи до нього вже >= lower, тому окремо перевіряти нижню межу не треба.
+                java.util.ListIterator<LocalDateTime> cursor0 = values.listIterator(low);
+                while (cursor0.hasNext()) {
+                    LocalDateTime value = cursor0.next();
+                    inspected++;
+                    // далі всі елементи ще більші, тож решту списку можна не переглядати
+                    if (value.isAfter(upper)) break;
+                    matches[count++] = value;
+                }
             }
         }
         PerformanceTracker.displayOperationTime(timeStart, operationName);
-        // Друк результатів не входить у виміряний час пошуку.
-        System.out.println("Переглянуто елементів: " + inspected);
-        for (int i = 0; i < count; i++) System.out.println(matches[i]);
+        // Запис результатів у файл не входить у виміряний час пошуку; на екран значення не виводяться.
+        LocalDateTime[] selection;
+        if (boundsFound) {
+            System.out.println("Межі вибірки знайдено методом Collections.binarySearch()");
+            selection = range.toArray(new LocalDateTime[0]);
+        } else {
+            System.out.println("Переглянуто елементів: " + inspected);
+            selection = Arrays.copyOf(matches, count);
+        }
+        DataFileHandler.writeArrayToFile(selection,
+                BasicDataOperations.SELECTION_FILE_PREFIX + ".list." + (sorted ? "after" : "before") + ".data");
         System.out.println("У List знайдено " + count + " входжень (повтори враховано). Умова: " + conditionDescription + ".");
         return count;
     }
